@@ -16,6 +16,7 @@ function Tab(id, session, lineEndings, entry, dialogController) {
   this.saved_ = true;
   this.path_ = null;
   this.dialogController_ = dialogController;
+  this.autoSaveTimeout_ = null;
   if (this.entry_)
     this.updatePath_();
 };
@@ -86,6 +87,10 @@ Tab.prototype.getContent_ = function() {
 };
 
 Tab.prototype.save = function(opt_callbackDone) {
+  if (this.autoSaveTimeout_) {
+    clearTimeout(this.autoSaveTimeout_);
+    this.autoSaveTimeout_ = null;
+  }
   util.writeFile(
     this.entry_, this.getContent_(),
     function() {
@@ -134,6 +139,8 @@ function Tabs(editor, dialogController, settings) {
   this.currentTab_ = null;
 
   $(document).bind('docchange', this.onDocChanged_.bind(this));
+  $(document).bind('settingschange', this.onSettingsChanged_.bind(this));
+  $(window).bind('blur', this.onWindowBlur_.bind(this));
 }
 
 /**
@@ -263,6 +270,13 @@ Tabs.prototype.showTab = function(tabId) {
   if (this.currentTab_) {
     // Before switching tabs, write the editorView's state to the tab.
     this.updateCurrentTabState_();
+    if (this.settings_.get('autosave') && !this.currentTab_.isSaved() && this.currentTab_.getEntry()) {
+      if (this.currentTab_.autoSaveTimeout_) {
+        clearTimeout(this.currentTab_.autoSaveTimeout_);
+        this.currentTab_.autoSaveTimeout_ = null;
+      }
+      this.currentTab_.save();
+    }
   }
 
   var tab = this.getTabById(tabId)
@@ -290,6 +304,14 @@ Tabs.prototype.close = function(tabId) {
   var tab = this.tabs_[i];
 
   if (!tab.isSaved()) {
+    if (this.settings_.get('autosave') && tab.getEntry()) {
+      if (tab.autoSaveTimeout_) {
+        clearTimeout(tab.autoSaveTimeout_);
+        tab.autoSaveTimeout_ = null;
+      }
+      tab.save(this.closeTab_.bind(this, tab));
+      return;
+    }
     this.promptSave_(tab, function(answer) {
       if (answer === 'yes') {
         this.save(tab, this.closeTab_.bind(this, tab));
@@ -361,6 +383,12 @@ Tabs.prototype.promptAllUnsavedFromIndex_ = function(i, callback) {
   var tab = this.tabs_[i];
   if (tab.isSaved()) {
     this.promptAllUnsavedFromIndex_(i + 1, callback);
+  } else if (this.settings_.get('autosave') && tab.getEntry()) {
+    if (tab.autoSaveTimeout_) {
+      clearTimeout(tab.autoSaveTimeout_);
+      tab.autoSaveTimeout_ = null;
+    }
+    tab.save(this.promptAllUnsavedFromIndex_.bind(this, i + 1, callback));
   } else {
     this.showTab(this.tabs_[i].getId());
     this.promptSave_(tab, function(answer) {
@@ -519,13 +547,78 @@ Tabs.prototype.saveEntry_ = function(tab, entry, opt_callback) {
 };
 
 /**
+ * The event handler for settings changes.
+ */
+Tabs.prototype.onSettingsChanged_ = function(e, key, value) {
+  if (key === 'autosave') {
+    if (value) {
+      for (var i = 0; i < this.tabs_.length; i++) {
+        if (!this.tabs_[i].isSaved() && this.tabs_[i].getEntry()) {
+          this.save(this.tabs_[i]);
+        }
+      }
+    } else {
+      for (var i = 0; i < this.tabs_.length; i++) {
+        if (this.tabs_[i].autoSaveTimeout_) {
+          clearTimeout(this.tabs_[i].autoSaveTimeout_);
+          this.tabs_[i].autoSaveTimeout_ = null;
+        }
+      }
+    }
+  }
+};
+
+/**
+ * Saves all unsaved files on window blur if autosave is enabled.
+ */
+Tabs.prototype.onWindowBlur_ = function() {
+  if (this.settings_.get('autosave')) {
+    if (this.currentTab_) {
+      this.updateCurrentTabState_();
+    }
+    for (var i = 0; i < this.tabs_.length; i++) {
+      var tab = this.tabs_[i];
+      if (!tab.isSaved() && tab.getEntry()) {
+        if (tab.autoSaveTimeout_) {
+          clearTimeout(tab.autoSaveTimeout_);
+          tab.autoSaveTimeout_ = null;
+        }
+        tab.save();
+      }
+    }
+  }
+};
+
+/**
+ * Schedules debounced autosave for a tab.
+ * @param {Tab} tab
+ */
+Tabs.prototype.scheduleAutoSave_ = function(tab) {
+  if (!tab || !tab.getEntry()) return;
+
+  if (tab.autoSaveTimeout_) {
+    clearTimeout(tab.autoSaveTimeout_);
+  }
+
+  tab.autoSaveTimeout_ = setTimeout(function() {
+    tab.autoSaveTimeout_ = null;
+    if (!tab.isSaved() && tab.getEntry()) {
+      tab.save();
+    }
+  }.bind(this), 1000);
+};
+
+/**
  * The event handler for the docchange event.
  */
 Tabs.prototype.onDocChanged_ = function() {
   if (this.currentTab_) {
     this.currentTab_.changed();
+    if (this.settings_.get('autosave')) {
+      this.scheduleAutoSave_(this.currentTab_);
+    }
   }
-}
+};
 
 /**
  * Determines whether any tabs are open.

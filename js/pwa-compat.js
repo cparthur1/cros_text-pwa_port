@@ -164,6 +164,7 @@
     "fileMenuSaveas": { "message": "Save as" },
     "menuSettings": { "message": "Settings" },
     "menuShortcuts": { "message": "Keyboard shortcuts" },
+    "autosaveSetting": { "message": "Auto save" },
     "fontsizeSetting": { "message": "Font size" },
     "fontsizeTooltip": { "message": "Set with Ctrl- and Ctrl+" },
     "spacestabSetting": { "message": "Tabs to spaces" },

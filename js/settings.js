@@ -36,6 +36,7 @@ Settings.AREA = 'sync';
  */
 Settings.SETTINGS = {
   'alwaysontop': {'default': false, 'type': 'boolean', 'widget': 'checkbox'},
+  'autosave': {'default': true, 'type': 'boolean', 'widget': 'checkbox'},
   'fontsize': {'default': 14, 'type': 'number', 'widget': 'number'},
   'linenumbers': {'default': true, 'type': 'boolean', 'widget': 'checkbox'},
   'sidebaropen': {'default': false, 'type': 'boolean', 'widget': null},
@@ -49,8 +50,6 @@ Settings.SETTINGS = {
 };
 
 Settings.prototype.removeOldSettings_ = function() {
-  if ('autosave' in this.settings_) delete this.settings_['autosave'];
-  this.storage_.remove('autosave');
 };
 
 /**
